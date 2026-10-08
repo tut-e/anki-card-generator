@@ -1,0 +1,9 @@
+# Ignore generated flashcards data
+anki_audio_flashcards.csv
+
+# Ignore local audio assets directory
+sound_cards/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
