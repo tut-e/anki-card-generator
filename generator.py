@@ -14,7 +14,6 @@ def clean_filename(filename):
 
 
 def get_existing_verbs(filepath):
-    # Метод проверяет, какие глаголы уже есть в CSV-файле, чтобы не дублировать их
     existing_verbs = set()
     if os.path.exists(filepath):
         try:
@@ -22,13 +21,13 @@ def get_existing_verbs(filepath):
                 reader = csv.reader(f, delimiter=";")
                 for row in reader:
                     if row:
-                        # Извлекаем чистый глагол из HTML-верстки лицевой стороны
                         raw_front = row[0]
                         if "font-size" in raw_front:
-                            verb = raw_front.split(";'>")[1].split("</div>")[0]
+                            # Безопасно вытаскиваем глагол из обновленной верстки
+                            verb = raw_front.split(";'>")[-1].split("</div>")[0]
                             existing_verbs.add(verb.strip().lower())
         except Exception:
-            pass  # Если файл поврежден или пуст, просто возвращаем пустой сет
+            pass
     return existing_verbs
 
 
@@ -45,7 +44,6 @@ def create_flashcards_from_clipboard_no_header():
     if not os.path.exists(sound_dir):
         os.makedirs(sound_dir)
 
-    # Загружаем список уже существующих в файле глаголов
     existing_verbs = get_existing_verbs(output_filename)
 
     f = io.StringIO(data_str.strip())
@@ -55,11 +53,10 @@ def create_flashcards_from_clipboard_no_header():
     for row in reader:
         if not row or len(row) < 7:
             continue
-        if "verb" in row[0].lower() or "перевод" in row[4].lower():
+        if "verb" in row[1].lower() or "перевод" in row[4].lower() if len(row) > 4 else False:
             continue
 
         verb_to_check = row[1].strip()
-        # ЗАЩИТА: Если такой глагол уже есть в файле, полностью пропускаем его
         if verb_to_check.lower() in existing_verbs:
             continue
 
@@ -73,6 +70,19 @@ def create_flashcards_from_clipboard_no_header():
 
     cards = []
     print(f"[+] New rows to process: {total_cards}\n")
+
+    # Общие CSS-стили для контейнера-карточки, чтобы она не зависела от темы телефона
+    card_style = (
+        "font-family: Arial, sans-serif; "
+        "max-width: 420px; "
+        "margin: 10px auto; "
+        "padding: 20px; "
+        "background-color: #ffffff; "  # Всегда белый фон самой карточки
+        "border-radius: 12px; "  # Скругление углов
+        "box-shadow: 0 4px 15px rgba(0,0,0,0.1); "  # Мягкая тень
+        "border: 1px solid #e1e8ed; "
+        "text-align: center;"
+    )
 
     for index, row in enumerate(rows, start=1):
         verb = row[1].strip()
@@ -115,46 +125,61 @@ def create_flashcards_from_clipboard_no_header():
                 gTTS(text=example, lang='en').save(example_audio_path)
             has_example_audio = True
 
-        # --- HTML LAYOUT ---
-        front = f"<div style='font-size: 28px; font-weight: bold; color: #2c3e50; text-align: center;'>{verb}</div>[sound:{verb_audio_name}]"
+        # --- HTML LAYOUT (STYLIZED & ADAPTIVE) ---
 
+        # Лицевая сторона упакована в белый блок с фиксированным темным текстом
+        front = (
+            f"<div style='{card_style}'>"
+            f"<div style='font-size: 32px; font-weight: bold; color: #2c3e50;'>{verb}</div>"
+            f"</div>[sound:{verb_audio_name}]"
+        )
+
+        # Оборотная сторона
         back_elements = [
-            f"<div style='font-size: 20px; font-weight: bold; color: #e74c3c; text-align: center; margin-bottom: 8px;'>{v2} / {v3}</div>",
-            f"<div style='font-size: 16px; color: #34495e; margin-bottom: 12px; text-align: center;'><b>{translation}</b></div>"
+            f"<div style='font-size: 22px; font-weight: bold; color: #e74c3c; margin-bottom: 6px;'>{v2} / {v3}</div>",
+            f"<div style='font-size: 17px; color: #34495e; margin-bottom: 16px;'><b>{translation}</b></div>"
         ]
 
         if collocs and collocs != '—':
             collocs_html = "<br>".join([f"• {c.strip()}" for c in collocs.split(';')])
             audio_tag = f" [sound:{collocs_audio_name}]" if has_collocs_audio else ""
             back_elements.append(
-                f"<div style='font-size: 13px; text-align: left; background: #f8f9fa; padding: 8px; border-left: 4px solid #3498db; margin-bottom: 8px;'><b>Коллокации:</b>{audio_tag}<br>{collocs_html}</div>")
+                f"<div style='font-size: 13px; text-align: left; background-color: #f8f9fa; padding: 10px; "
+                f"border-left: 4px solid #3498db; margin-bottom: 10px; border-radius: 4px; color: #2c3e50;'>"
+                f"<b style='color: #2c3e50;'>Collocations:</b>{audio_tag}<br>{collocs_html}</div>"
+            )
 
         if phrasal and phrasal != '—':
             phrasal_formatted = ", ".join([p.strip() for p in phrasal.split(';')])
             audio_tag = f" [sound:{phrasal_audio_name}]" if has_phrasal_audio else ""
             back_elements.append(
-                f"<div style='font-size: 13px; color: #8e44ad; margin-bottom: 8px;'><b>Фразовые глаголы:</b> {phrasal_formatted}{audio_tag}</div>")
+                f"<div style='font-size: 13px; text-align: left; color: #8e44ad; margin-bottom: 10px; "
+                f"background-color: #fbf5fc; padding: 8px; border-radius: 4px; border-left: 4px solid #9b59b6;'>"
+                f"<b style='color: #8e44ad;'>Phrasal Verbs:</b> {phrasal_formatted}{audio_tag}</div>"
+            )
 
         if example and example != '—':
             audio_tag = f" [sound:{example_audio_name}]" if has_example_audio else ""
             back_elements.append(
-                f"<div style='font-size: 14px; font-style: italic; color: #7f8c8d; border-top: 1px dashed #bdc3c7; padding-top: 6px;'><b>Пример:</b> {example}{audio_tag}</div>")
+                f"<div style='font-size: 14px; font-style: italic; color: #555555; border-top: 1px dashed #bdc3c7; "
+                f"padding-top: 8px; margin-top: 10px; text-align: left;'>"
+                f"<b style='color: #2c3e50; font-style: normal;'>Example:</b> {example}{audio_tag}</div>"
+            )
 
-        back = f"<div style='font-family: Arial, sans-serif; max-width: 400px; margin: 0 auto;'>{''.join(back_elements)}</div>"
+        back = f"<div style='{card_style}'>{''.join(back_elements)}</div>"
         cards.append([front, back])
 
         # Progress Bar
         percent = int((index / total_cards) * 100)
         bar = '█' * int(20 * index // total_cards) + '░' * (20 - int(20 * index // total_cards))
-        sys.stdout.write(f"\rProgress: [{bar}] {percent}% ({index}/{total_cards}) -> Generated: {verb:<15}")
+        sys.stdout.write(f"\rProgress: [{bar}] {percent}% ({index}/{total_cards}) -> Modernized: {verb:<15}")
         sys.stdout.flush()
 
-    # РЕЖИМ "a" (Append) — теперь строки дописываются в конец файла, не стирая старые
     with open(output_filename, mode="a", encoding="utf-8", newline="") as out_file:
         writer = csv.writer(out_file, delimiter=";")
         writer.writerows(cards)
 
-    print(f"\n\n[+] Success! Added {total_cards} new cards to '{output_filename}'")
+    print(f"\n\n[+] Success! Modernized and added {total_cards} cards to '{output_filename}'")
 
     # --- AUTO-OPENING DIRECTORIES ---
     print("[+] Opening system folders...")
@@ -162,7 +187,6 @@ def create_flashcards_from_clipboard_no_header():
 
     local_pkg_path = os.path.join(os.path.expanduser("~"), "AppData", "Local", "Packages")
     anki_found = False
-
     if os.path.exists(local_pkg_path):
         for folder in os.listdir(local_pkg_path):
             if "Anki" in folder or "anki" in folder.lower():
@@ -171,13 +195,11 @@ def create_flashcards_from_clipboard_no_header():
                     os.startfile(target_media)
                     anki_found = True
                     break
-
     if not anki_found:
         roaming_media = os.path.join(os.path.expanduser("~"), "AppData", "Roaming", "Anki2", "User 1",
                                      "collection.media")
         if os.path.exists(roaming_media):
             os.startfile(roaming_media)
-            anki_found = True
 
 
 if __name__ == "__main__":
